@@ -410,6 +410,19 @@ export default {
         processed_turns: turns?.n ?? 0,
         last_notification_check: lastCheck,
         dm_mention: env.DM_MENTION,
+        polling_enabled: true, // Cron-based polling is always active
+      });
+    }
+
+    // API: Get recent turns
+    if (url.pathname === "/api/turns") {
+      const turns = await env.DB
+        .prepare("SELECT * FROM dm_turns ORDER BY created_at DESC LIMIT 20")
+        .all();
+
+      return Response.json({
+        ok: true,
+        turns: turns.results ?? [],
       });
     }
 
