@@ -55,10 +55,10 @@ function pickAssistantText(lettaResp: any): string {
         }
       }
 
-      // Tool use response format
-      if (m?.message_type === "assistant_message" && m?.assistant_message) {
-        console.log("pickAssistantText: Found assistant_message");
-        return String(m.assistant_message).trim();
+      // Letta API format: message_type === "assistant_message" with content field
+      if (m?.message_type === "assistant_message" && m?.content) {
+        console.log("pickAssistantText: Found assistant_message with content");
+        return String(m.content).trim();
       }
 
       // NEW: Check for internal_monologue or assistant_message text
