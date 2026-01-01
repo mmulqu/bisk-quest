@@ -301,21 +301,30 @@ export class JetstreamListener {
 
   async alarm(): Promise<void> {
     if (!this.running) return;
-    
-    // Send ping to keep connection alive if connected
-    if (this.ws?.readyState === WebSocket.OPEN) {
+
+    try {
+      // Send ping to keep connection alive if connected
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        try {
+          this.ws.send(JSON.stringify({ op: "ping" }));
+        } catch (e) {
+          console.error("Ping failed, reconnecting:", e);
+          this.ws = null;
+        }
+      }
+
+      // Ensure connection is active
+      this.state.waitUntil(this.ensureConnected());
+    } catch (e) {
+      console.error("Alarm error (non-fatal):", e);
+    } finally {
+      // ALWAYS re-arm the alarm, even if there was an error
       try {
-        this.ws.send(JSON.stringify({ op: "ping" }));
+        await this.state.storage.setAlarm(Date.now() + 20_000);
       } catch (e) {
-        console.error("Ping failed, reconnecting:", e);
-        this.ws = null;
+        console.error("Failed to re-arm alarm:", e);
       }
     }
-    
-    // Ensure connection is active
-    this.state.waitUntil(this.ensureConnected());
-    // Re-arm alarm with shorter interval (20s)
-    await this.state.storage.setAlarm(Date.now() + 20_000);
   }
 
   private async ensureConnected(): Promise<void> {
