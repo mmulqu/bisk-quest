@@ -110,12 +110,17 @@ export async function importAgentFromCanonicalAf(params: {
   });
 
   const j = (await r.json()) as any;
-  const agentId = j?.id ?? j?.agent_id ?? j?.agent?.id;
-  
+
+  // Letta API returns different formats:
+  // - Single import: { id: "..." } or { agent_id: "..." }
+  // - Batch import: { agent_ids: ["..."] }
+  const agentId = j?.id ?? j?.agent_id ?? j?.agent?.id ?? j?.agent_ids?.[0];
+
   if (!agentId) {
     throw new Error(`Letta import did not return agent id: ${JSON.stringify(j)}`);
   }
-  
+
+  console.log("Imported Letta agent:", agentId);
   return agentId;
 }
 
