@@ -22,34 +22,65 @@ export type UserRow = {
  * Extract assistant text from Letta response
  */
 function pickAssistantText(lettaResp: any): string {
-  // Letta returns messages array with various formats
-  const msgs = lettaResp?.messages ?? lettaResp?.data?.messages ?? [];
-  
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    const m = msgs[i];
-    
-    // Direct string content
-    if (m?.role === "assistant" && typeof m?.content === "string") {
-      return m.content.trim();
-    }
-    
-    // Array of content blocks
-    if (m?.role === "assistant" && Array.isArray(m?.content)) {
-      const joined = m.content
-        .map((c: any) => c?.text ?? "")
-        .join("")
-        .trim();
-      if (joined) return joined;
-    }
-    
-    // Tool use response format
-    if (m?.message_type === "assistant_message" && m?.assistant_message) {
-      return String(m.assistant_message).trim();
+  console.log("pickAssistantText: Checking response for assistant text...");
+
+  // Try multiple paths to find the messages array
+  const msgs =
+    lettaResp?.messages ??
+    lettaResp?.data?.messages ??
+    lettaResp?.data ??
+    (Array.isArray(lettaResp) ? lettaResp : []);
+
+  console.log("pickAssistantText: Found", Array.isArray(msgs) ? msgs.length : 0, "messages");
+
+  if (Array.isArray(msgs)) {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+
+      // Direct string content
+      if (m?.role === "assistant" && typeof m?.content === "string") {
+        console.log("pickAssistantText: Found assistant message (string content)");
+        return m.content.trim();
+      }
+
+      // Array of content blocks
+      if (m?.role === "assistant" && Array.isArray(m?.content)) {
+        const joined = m.content
+          .map((c: any) => c?.text ?? "")
+          .join("")
+          .trim();
+        if (joined) {
+          console.log("pickAssistantText: Found assistant message (array content)");
+          return joined;
+        }
+      }
+
+      // Tool use response format
+      if (m?.message_type === "assistant_message" && m?.assistant_message) {
+        console.log("pickAssistantText: Found assistant_message");
+        return String(m.assistant_message).trim();
+      }
+
+      // NEW: Check for internal_monologue or assistant_message text
+      if (m?.role === "assistant" && m?.text) {
+        console.log("pickAssistantText: Found assistant message with text field");
+        return String(m.text).trim();
+      }
     }
   }
-  
-  // Fallback
-  return String(lettaResp?.output ?? lettaResp?.text ?? "").trim();
+
+  // Fallback paths
+  if (lettaResp?.output) {
+    console.log("pickAssistantText: Using fallback output field");
+    return String(lettaResp.output).trim();
+  }
+  if (lettaResp?.text) {
+    console.log("pickAssistantText: Using fallback text field");
+    return String(lettaResp.text).trim();
+  }
+
+  console.warn("pickAssistantText: No text found in response");
+  return "";
 }
 
 /**
@@ -170,15 +201,23 @@ This will be posted on Bluesky which has strict character limits. Keep it punchy
   });
 
   const j = await r.json();
+
+  // Debug logging to see the actual response structure
+  console.log("Letta API response keys:", Object.keys(j));
+  console.log("Letta API response sample:", JSON.stringify(j).slice(0, 1000));
+
   const text = pickAssistantText(j);
 
   if (!text) {
-    console.error("Empty Letta response:", JSON.stringify(j).slice(0, 500));
+    console.error("Empty Letta response - full response:", JSON.stringify(j, null, 2));
+    console.error("Failed to extract text from response");
     return {
       text: "The DM ponders silently... (No response generated. Try again?)",
       agentId,
     };
   }
+
+  console.log("Extracted DM text:", text.slice(0, 200));
 
   // Return both the text and the NEW agent ID (caller will save it)
   return { text, agentId };
