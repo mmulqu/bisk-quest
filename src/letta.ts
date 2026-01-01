@@ -113,6 +113,23 @@ async function lettaFetch(
 }
 
 /**
+ * Rename an agent
+ */
+async function renameAgent(
+  user: UserRow,
+  env: LettaEnv,
+  agentId: string,
+  newName: string
+): Promise<void> {
+  await lettaFetch(user, env, `/v1/agents/${agentId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: newName }),
+  });
+  console.log(`Renamed agent ${agentId} to: ${newName}`);
+}
+
+/**
  * Import agent from canonical .af file stored in R2
  * Returns the new agent ID
  */
@@ -127,7 +144,7 @@ export async function importAgentFromCanonicalAf(params: {
   }
 
   const afBytes = await obj.arrayBuffer();
-  
+
   // FormData for multipart file upload
   const fd = new FormData();
   fd.append(
@@ -153,6 +170,20 @@ export async function importAgentFromCanonicalAf(params: {
   }
 
   console.log("Imported Letta agent:", agentId);
+
+  // Rename to use incremental numbering instead of bisky_copy_copy_copy...
+  // Count existing bisky agents to get next number
+  const allAgents = await listAgents(params.user, params.env);
+  const biskyAgents = allAgents.filter((a: any) => {
+    const name = String(a.name ?? "").toLowerCase();
+    return name.includes("bisky") || name.includes("copy");
+  });
+
+  const nextNumber = biskyAgents.length; // This includes the newly imported one
+  const newName = `bisky_copy_${nextNumber}`;
+
+  await renameAgent(params.user, params.env, agentId, newName);
+
   return agentId;
 }
 
