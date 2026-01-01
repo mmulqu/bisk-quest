@@ -210,6 +210,117 @@ pre {
   padding: 1rem 0;
 }
 
+/* Story Entry Styles */
+.story-entry {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.story-entry:last-child {
+  margin-bottom: 0;
+}
+
+.turn-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.turn-number {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.turn-time {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.player-action,
+.dm-response {
+  margin-bottom: 0.75rem;
+}
+
+.dm-response {
+  margin-bottom: 0.5rem;
+}
+
+.message-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.player-action .message-label {
+  color: var(--accent);
+}
+
+.dm-response .message-label {
+  color: #a78bfa;
+}
+
+.message-text {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  padding: 0.75rem;
+  background: var(--surface);
+  border-radius: 6px;
+  border-left: 3px solid var(--border);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.player-action .message-text {
+  border-left-color: var(--accent);
+}
+
+.dm-response .message-text {
+  border-left-color: #a78bfa;
+  font-style: italic;
+}
+
+.turn-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.state-hash {
+  font-family: monospace;
+  background: var(--surface);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.bsky-link {
+  color: var(--accent);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: opacity 0.15s;
+}
+
+.bsky-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
 footer {
   margin-top: 2rem;
   padding-top: 1rem;
@@ -226,8 +337,14 @@ footer p {
   .container {
     padding: 1rem;
   }
-  
+
   .controls {
     flex-direction: column;
+  }
+
+  .turn-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
   }
 }

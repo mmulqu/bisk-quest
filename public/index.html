@@ -45,7 +45,8 @@
     </section>
 
     <section class="card">
-      <h2>Recent Turns</h2>
+      <h2>The Adventure So Far</h2>
+      <p class="help">Latest events at the top. Watch the story unfold!</p>
       <div id="turns">Loading...</div>
     </section>
 
@@ -75,22 +76,46 @@
       try {
         const r = await fetch('/api/turns');
         const data = await r.json();
-        
+
         if (!data.turns?.length) {
-          turnsEl.innerHTML = '<p class="empty">No turns yet</p>';
+          turnsEl.innerHTML = '<p class="empty">No adventure yet. Mention the bot on Bluesky to begin!</p>';
           return;
         }
-        
-        turnsEl.innerHTML = data.turns.map(t => `
-          <div class="turn">
-            <span class="player">@${t.player_handle}</span>
-            <span class="hash">${t.state_hash.slice(0, 8)}</span>
-            <span class="time">${new Date(t.created_at).toLocaleString()}</span>
+
+        turnsEl.innerHTML = data.turns.map((t, i) => `
+          <div class="story-entry">
+            <div class="turn-header">
+              <span class="turn-number">Turn #${data.turns.length - i}</span>
+              <span class="turn-time">${new Date(t.created_at).toLocaleTimeString()}</span>
+            </div>
+
+            <div class="player-action">
+              <div class="message-label">💬 @${t.player_handle}</div>
+              <div class="message-text">${escapeHtml(t.player_message || 'Unknown action')}</div>
+            </div>
+
+            <div class="dm-response">
+              <div class="message-label">🎲 DM</div>
+              <div class="message-text">${escapeHtml(t.dm_response || 'Processing...')}</div>
+            </div>
+
+            <div class="turn-footer">
+              <span class="state-hash">📍 ${t.state_hash.slice(0, 12)}</span>
+              <a href="https://bsky.app/profile/${t.player_handle.replace('@', '')}/post/${t.trigger_uri.split('/').pop()}"
+                 target="_blank" class="bsky-link">🔗 View on Bluesky</a>
+            </div>
           </div>
         `).join('');
       } catch (e) {
-        turnsEl.innerHTML = '<p class="empty">Error loading turns</p>';
+        turnsEl.innerHTML = '<p class="empty">Error loading adventure log</p>';
       }
+    }
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
     }
 
     // Register form
