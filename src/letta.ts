@@ -168,14 +168,12 @@ export async function runDmTurn(params: {
   canonicalStateHash: string;
   playerHandle: string;
 }): Promise<{ text: string; agentId: string }> {
-  // Delete the OLD agent before importing the new one
-  if (params.user.current_agent_id) {
-    console.log("Cleaning up previous agent:", params.user.current_agent_id);
-    await deleteAgent(params.user, params.env, params.user.current_agent_id);
-  }
-
   // Import the shared canonical agent (creates a NEW agent)
   const agentId = await importAgentFromCanonicalAf(params);
+
+  // Clean up ALL old bisky_copy agents except this new one
+  // This runs AFTER import so we don't delete the new agent
+  await cleanupOldAgents(params.user, params.env, agentId);
 
   // Build the DM prompt - emphasize brevity for Bluesky
   const prompt = `You are the Dungeon Master for a collaborative public Bluesky campaign.
@@ -269,6 +267,62 @@ export async function listArchivalPassages(
   }
 
   return passages;
+}
+
+/**
+ * List all agents for a user
+ */
+export async function listAgents(
+  user: UserRow,
+  env: LettaEnv
+): Promise<any[]> {
+  try {
+    const r = await lettaFetch(user, env, "/v1/agents?limit=100", {
+      method: "GET",
+    });
+    const data = (await r.json()) as any;
+    return Array.isArray(data) ? data : data?.agents ?? [];
+  } catch (e) {
+    console.error("Failed to list agents:", e);
+    return [];
+  }
+}
+
+/**
+ * Clean up old bisky_copy agents, keeping only the current one
+ */
+export async function cleanupOldAgents(
+  user: UserRow,
+  env: LettaEnv,
+  currentAgentId: string
+): Promise<void> {
+  try {
+    console.log("Cleaning up old bisky_copy agents...");
+    const allAgents = await listAgents(user, env);
+
+    // Filter for agents that look like imported copies
+    // The canonical agent is named "bisky_copy" or similar when imported
+    const importedAgents = allAgents.filter((a: any) => {
+      const name = String(a.name ?? "").toLowerCase();
+      return name.includes("bisky") || name.includes("copy");
+    });
+
+    console.log(`Found ${importedAgents.length} bisky_copy agents total`);
+
+    // Delete all except the current one
+    let deletedCount = 0;
+    for (const agent of importedAgents) {
+      if (agent.id !== currentAgentId) {
+        console.log(`Deleting old agent: ${agent.id} (${agent.name})`);
+        await deleteAgent(user, env, agent.id);
+        deletedCount++;
+      }
+    }
+
+    console.log(`Cleaned up ${deletedCount} old agents, kept ${currentAgentId}`);
+  } catch (e) {
+    console.error("Failed to cleanup old agents (non-fatal):", e);
+  }
 }
 
 /**
