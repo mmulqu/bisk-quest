@@ -15,6 +15,7 @@ export type UserRow = {
   handle: string;
   letta_base_url: string;
   letta_key_enc_b64: string;
+  current_agent_id?: string | null;
 };
 
 /**
@@ -126,6 +127,7 @@ export async function importAgentFromCanonicalAf(params: {
 
 /**
  * Run a DM turn using the player's Letta credentials
+ * Returns both the DM text and the new agent ID
  */
 export async function runDmTurn(params: {
   user: UserRow;
@@ -134,13 +136,18 @@ export async function runDmTurn(params: {
   moveText: string;
   canonicalStateHash: string;
   playerHandle: string;
-}): Promise<string> {
-  // Import the shared canonical agent
+}): Promise<{ text: string; agentId: string }> {
+  // Delete the OLD agent before importing the new one
+  if (params.user.current_agent_id) {
+    console.log("Cleaning up previous agent:", params.user.current_agent_id);
+    await deleteAgent(params.user, params.env, params.user.current_agent_id);
+  }
+
+  // Import the shared canonical agent (creates a NEW agent)
   const agentId = await importAgentFromCanonicalAf(params);
 
-  try {
-    // Build the DM prompt - emphasize brevity for Bluesky
-    const prompt = `You are the Dungeon Master for a collaborative public Bluesky campaign.
+  // Build the DM prompt - emphasize brevity for Bluesky
+  const prompt = `You are the Dungeon Master for a collaborative public Bluesky campaign.
 
 CURRENT STATE HASH: ${params.canonicalStateHash}
 
@@ -153,29 +160,28 @@ CRITICAL: Write a SHORT DM narration (250 characters MAX). Be vivid but extremel
 
 This will be posted on Bluesky which has strict character limits. Keep it punchy!`;
 
-    const r = await lettaFetch(params.user, params.env, `/v1/agents/${agentId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: [{ role: "user", content: prompt }],
-        stream: false,
-      }),
-    });
+  const r = await lettaFetch(params.user, params.env, `/v1/agents/${agentId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages: [{ role: "user", content: prompt }],
+      stream: false,
+    }),
+  });
 
-    const j = await r.json();
-    const text = pickAssistantText(j);
+  const j = await r.json();
+  const text = pickAssistantText(j);
 
-    if (!text) {
-      console.error("Empty Letta response:", JSON.stringify(j).slice(0, 500));
-      return "The DM ponders silently... (No response generated. Try again?)";
-    }
-
-    return text;
-  } finally {
-    // ALWAYS clean up the temporary agent, even if the turn fails
-    console.log("Cleaning up temporary agent:", agentId);
-    await deleteAgent(params.user, params.env, agentId);
+  if (!text) {
+    console.error("Empty Letta response:", JSON.stringify(j).slice(0, 500));
+    return {
+      text: "The DM ponders silently... (No response generated. Try again?)",
+      agentId,
+    };
   }
+
+  // Return both the text and the NEW agent ID (caller will save it)
+  return { text, agentId };
 }
 
 /**
