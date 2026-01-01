@@ -375,6 +375,21 @@ export class JetstreamListener {
     });
   }
 
+  private async hasBotParticipatedInThread(rootUri: string): Promise<boolean> {
+    try {
+      // Check if any turn in this thread has been recorded
+      const result = await this.env.DB
+        .prepare("SELECT COUNT(*) as count FROM dm_turns WHERE trigger_uri LIKE ?")
+        .bind(`%${rootUri}%`)
+        .first<{ count: number }>();
+
+      return (result?.count ?? 0) > 0;
+    } catch (e) {
+      console.error("Error checking thread participation:", e);
+      return false;
+    }
+  }
+
   private async catchUpOnMissedMentions(): Promise<void> {
     try {
       console.log("Catching up on missed mentions...");
@@ -599,6 +614,7 @@ export class JetstreamListener {
     // Method 1: Check text for mention string
     if (textLower.includes(mentionLower)) {
       isRelevant = true;
+      console.log("Detected text mention:", uri);
     }
 
     // Method 2: Check facets for @mention (more reliable)
@@ -613,6 +629,9 @@ export class JetstreamListener {
         }
         return false;
       });
+      if (isRelevant) {
+        console.log("Detected facet mention:", uri);
+      }
     }
 
     // Method 3: Check if this is a reply to the bot
@@ -625,7 +644,18 @@ export class JetstreamListener {
       }
     }
 
-    // Method 4: Check if this is a quote post of the bot
+    // Method 4: Check if this is in a thread the bot has participated in
+    if (!isRelevant && record?.reply?.root?.uri) {
+      const rootUri = String(record.reply.root.uri);
+      // Check if bot has replied to this thread before
+      const botParticipatedInThread = await this.hasBotParticipatedInThread(rootUri);
+      if (botParticipatedInThread) {
+        isRelevant = true;
+        console.log("Detected post in thread with bot participation:", uri);
+      }
+    }
+
+    // Method 5: Check if this is a quote post of the bot
     if (!isRelevant && this.botDid && record?.embed) {
       const embed = record.embed;
       // Check for direct quote (app.bsky.embed.record)
