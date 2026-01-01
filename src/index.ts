@@ -271,6 +271,10 @@ export class JetstreamListener {
           console.error("Failed to resolve bot DID:", e);
         }
       }
+
+      // Process any missed mentions before starting the live stream
+      this.state.waitUntil(this.catchUpOnMissedMentions());
+
       this.state.waitUntil(this.ensureConnected());
       // Shorter alarm interval for better keepalive (20s)
       await this.state.storage.setAlarm(Date.now() + 20_000);
@@ -369,6 +373,203 @@ export class JetstreamListener {
     ws.addEventListener("message", (evt) => {
       this.state.waitUntil(this.handleMessage(String(evt.data)));
     });
+  }
+
+  private async catchUpOnMissedMentions(): Promise<void> {
+    try {
+      console.log("Catching up on missed mentions...");
+
+      // Get last processed timestamp from Durable Object storage
+      const lastChecked = await this.state.storage.get<string>("last_notification_check");
+      const since = lastChecked || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // Default: last 24h
+
+      console.log("Checking notifications since:", since);
+
+      // Create session to fetch notifications
+      const { createSession } = await import("./bsky");
+      const session = await createSession(this.env);
+
+      // Fetch notifications
+      const notifUrl = `https://bsky.social/xrpc/app.bsky.notification.listNotifications?limit=50`;
+      const notifRes = await fetch(notifUrl, {
+        headers: { Authorization: `Bearer ${session.accessJwt}` }
+      });
+
+      if (!notifRes.ok) {
+        console.error("Failed to fetch notifications:", notifRes.status);
+        return;
+      }
+
+      const notifData = await notifRes.json() as any;
+      const notifications = notifData?.notifications || [];
+
+      // Filter for relevant mentions/replies after the last check
+      const relevantNotifs = notifications.filter((n: any) => {
+        // Skip if too old
+        if (n.indexedAt < since) return false;
+
+        // Skip reposts
+        if (n.reason === 'repost') return false;
+
+        // Include mentions and replies
+        if (n.reason === 'mention' || n.reason === 'reply') return true;
+
+        // Include quotes that mention the bot
+        if (n.reason === 'quote') {
+          const rec = n.record ?? {};
+          const text = String(rec.text || "").toLowerCase();
+          const mentionLower = this.env.DM_MENTION.toLowerCase();
+          return text.includes(mentionLower);
+        }
+
+        return false;
+      });
+
+      console.log(`Found ${relevantNotifs.length} missed notifications to process`);
+
+      // Process each missed mention
+      for (const notif of relevantNotifs) {
+        const authorDid = notif.author?.did;
+        const uri = notif.uri;
+        const record = notif.record ?? {};
+        const text = String(record.text ?? "");
+
+        if (!authorDid || !uri) continue;
+
+        // Check if already processed
+        if (await dbWasProcessed(this.env.DB, uri)) {
+          continue;
+        }
+
+        console.log("Processing missed mention:", uri);
+
+        // Get the post details to extract cid
+        try {
+          const postRes = await fetch(
+            `https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread?uri=${encodeURIComponent(uri)}`,
+            { headers: { Authorization: `Bearer ${session.accessJwt}` } }
+          );
+
+          if (!postRes.ok) continue;
+
+          const postData = await postRes.json() as any;
+          const post = postData?.thread?.post;
+          if (!post) continue;
+
+          const cid = post.cid;
+          const rkey = uri.split('/').pop();
+
+          // Process using the same logic as real-time mentions
+          const user = await dbGetUser(this.env.DB, authorDid);
+          if (!user) {
+            console.log("Unregistered player:", authorDid);
+            continue;
+          }
+
+          await dbMarkProcessed(this.env.DB, uri);
+
+          // Queue the processing (don't await to avoid blocking catchup)
+          this.state.waitUntil(this.processMention({
+            uri,
+            authorDid,
+            cid,
+            rkey: rkey || "",
+            record,
+            text,
+            user
+          }));
+
+        } catch (e) {
+          console.error("Error processing missed mention:", uri, e);
+        }
+      }
+
+      // Update last checked timestamp
+      const now = new Date().toISOString();
+      await this.state.storage.put("last_notification_check", now);
+      console.log("Catchup complete. Updated last check to:", now);
+
+    } catch (e) {
+      console.error("Error catching up on missed mentions:", e);
+    }
+  }
+
+  private async processMention(params: {
+    uri: string;
+    authorDid: string;
+    cid: string;
+    rkey: string;
+    record: any;
+    text: string;
+    user: UserRow;
+  }): Promise<void> {
+    try {
+      console.log("Processing mention for:", params.user.handle);
+
+      const meta = await getCanonicalMeta(this.env);
+
+      const { text: dmText, agentId } = await runDmTurn({
+        user: params.user,
+        env: this.env,
+        stateBucket: this.env.STATE,
+        moveText: params.text,
+        canonicalStateHash: meta.hash,
+        playerHandle: params.user.handle,
+      });
+
+      await dbUpdateUserAgentId(this.env.DB, params.user.did, agentId);
+
+      const nextHash = await sha256Hex(`${meta.hash}\n${params.uri}\n${dmText}`);
+      const shortHash = nextHash.slice(0, 12);
+
+      const tag = this.env.DM_TAG || "#DM";
+      const footer = `\n\n${tag} state:${shortHash}`;
+      const footerLength = footer.length;
+
+      let trimmedDmText = dmText;
+      const MAX_TOTAL_LENGTH = 280;
+
+      if (dmText.length + footerLength > MAX_TOTAL_LENGTH) {
+        const maxDmLength = MAX_TOTAL_LENGTH - footerLength - 3;
+        const lastSpace = dmText.slice(0, maxDmLength).lastIndexOf(' ');
+        trimmedDmText = dmText.slice(0, lastSpace > 0 ? lastSpace : maxDmLength) + '...';
+      }
+
+      const replyText = `${trimmedDmText}${footer}`;
+
+      let rootUri = params.uri;
+      let rootCid = params.cid;
+
+      if (params.record?.reply?.root?.uri && params.record?.reply?.root?.cid) {
+        rootUri = params.record.reply.root.uri;
+        rootCid = params.record.reply.root.cid;
+      }
+
+      const posted = await postReply({
+        env: this.env,
+        text: replyText,
+        parentUri: params.uri,
+        parentCid: params.cid,
+        rootUri,
+        rootCid,
+      });
+
+      console.log("Posted DM reply:", posted.uri);
+
+      await setCanonicalMeta(this.env, {
+        hash: nextHash,
+        updated_at: new Date().toISOString(),
+        last_trigger_uri: params.uri,
+        last_player: params.user.handle,
+        turn_count: (meta.turn_count ?? 0) + 1,
+      });
+
+      await dbRecordTurn(this.env.DB, params.uri, params.user.did, params.user.handle, nextHash);
+
+      console.log("Turn complete. New state:", shortHash);
+    } catch (e: any) {
+      console.error("Mention processing failed:", e?.message ?? e);
+    }
   }
 
   private async handleMessage(raw: string): Promise<void> {
