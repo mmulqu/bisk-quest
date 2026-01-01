@@ -442,16 +442,16 @@ export class JetstreamListener {
       return;
     }
 
-    // Mark as processing immediately
-    await dbMarkProcessed(this.env.DB, uri);
-
-    // Look up user
+    // Look up user BEFORE marking as processed
     const user = await dbGetUser(this.env.DB, authorDid);
     if (!user) {
-      console.log("Unregistered player:", authorDid);
-      // Optionally: post a reply telling them to register
+      console.log("Unregistered player:", authorDid, "- ignoring mention");
+      // Don't mark as processed - this allows re-processing if they register later
       return;
     }
+
+    // Mark as processing AFTER confirming user is registered
+    await dbMarkProcessed(this.env.DB, uri);
 
     console.log("Processing turn for:", user.handle);
 
@@ -514,8 +514,22 @@ export class JetstreamListener {
 
       console.log("Turn complete. New state:", shortHash);
     } catch (e: any) {
-      console.error("Turn processing failed:", e?.message ?? e);
+      console.error("Turn processing failed for", user.handle, ":", e?.message ?? e);
+      console.error("Full error:", e);
       // Don't un-mark as processed to avoid retry loops
+      // Consider posting an error reply to the user
+      try {
+        await postReply({
+          env: this.env,
+          text: "Sorry, I encountered an error processing your request. Please try again later or check your Letta configuration.",
+          parentUri: uri,
+          parentCid: cid,
+          rootUri: uri,
+          rootCid: cid,
+        });
+      } catch (replyErr) {
+        console.error("Failed to post error reply:", replyErr);
+      }
     }
   }
 }
