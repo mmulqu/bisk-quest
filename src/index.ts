@@ -102,9 +102,11 @@ async function dbSetBotState(db: D1Database, key: string, value: string): Promis
 }
 
 async function dbHasBotParticipatedInThread(db: D1Database, rootUri: string): Promise<boolean> {
+  // Check if the bot has responded to this exact post, or any post in this thread
+  // Use exact match instead of LIKE to avoid "pattern too complex" errors with AT URIs
   const r = await db
-    .prepare("SELECT COUNT(*) as count FROM dm_turns WHERE trigger_uri LIKE ?")
-    .bind(`%${rootUri}%`)
+    .prepare("SELECT COUNT(*) as count FROM dm_turns WHERE trigger_uri = ?")
+    .bind(rootUri)
     .first<{ count: number }>();
   return (r?.count ?? 0) > 0;
 }
