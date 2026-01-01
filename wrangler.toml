@@ -18,24 +18,12 @@ database_id = "82e47f4a-143d-43c6-9ecc-3997242fbf8b"
 binding = "STATE"
 bucket_name = "dm-shared-state"
 
-[durable_objects]
-bindings = [
-  { name = "JET", class_name = "JetstreamListener" }
-]
-
-[[migrations]]
-tag = "v1"
-new_classes = ["JetstreamListener"]
-
 [vars]
 # DM bot Bluesky account (posts the DM replies)
 DM_HANDLE = "bisk-quest.bsky.social"
 
 # Mention trigger text to watch for
 DM_MENTION = "@bisk-quest.bsky.social"
-
-# Jetstream endpoint (Bluesky firehose lite)
-JETSTREAM_URL = "wss://jetstream2.us-west.bsky.network/subscribe?wantedCollections=app.bsky.feed.post"
 
 # Bluesky app password for the DM bot
 DM_APP_PASSWORD = "6rsv-hsbq-ztrs-qoud"

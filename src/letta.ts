@@ -201,7 +201,7 @@ This will be posted on Bluesky which has strict character limits. Keep it punchy
   const j = await r.json();
 
   // Debug logging to see the actual response structure
-  console.log("Letta API response keys:", Object.keys(j));
+  console.log("Letta API response keys:", Object.keys(j as any));
   console.log("Letta API response sample:", JSON.stringify(j).slice(0, 1000));
 
   const text = pickAssistantText(j);

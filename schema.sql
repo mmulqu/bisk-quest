@@ -23,6 +23,13 @@ CREATE TABLE IF NOT EXISTS dm_turns (
   created_at TEXT NOT NULL
 );
 
+-- Bot state table: tracks polling state and other bot metadata
+CREATE TABLE IF NOT EXISTS bot_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 -- Index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_users_handle ON users(handle);
 CREATE INDEX IF NOT EXISTS idx_dm_turns_player ON dm_turns(player_did);
