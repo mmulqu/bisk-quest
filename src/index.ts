@@ -373,28 +373,63 @@ export class JetstreamListener {
 
     if (!authorDid || !rkey || !cid) return;
 
-    // Early filtering: Check if post mentions the bot
-    // Method 1: Check text for mention string
+    // Early filtering: Check if post is relevant to the bot
     const mentionLower = this.env.DM_MENTION.toLowerCase();
     const textLower = text.toLowerCase();
-    let hasMention = textLower.includes(mentionLower);
-    
-    // Method 2: Check facets for mention (more reliable)
-    if (!hasMention && this.botDid && record?.facets) {
+    let isRelevant = false;
+
+    // Method 1: Check text for mention string
+    if (textLower.includes(mentionLower)) {
+      isRelevant = true;
+    }
+
+    // Method 2: Check facets for @mention (more reliable)
+    if (!isRelevant && this.botDid && record?.facets) {
       const facets = Array.isArray(record.facets) ? record.facets : [];
-      hasMention = facets.some((f: any) => {
+      isRelevant = facets.some((f: any) => {
         if (f?.features) {
-          return f.features.some((feat: any) => 
-            feat?.$type === "app.bsky.richtext.facet#mention" && 
+          return f.features.some((feat: any) =>
+            feat?.$type === "app.bsky.richtext.facet#mention" &&
             feat?.did === this.botDid
           );
         }
         return false;
       });
     }
-    
-    // Skip if no mention found (early exit to reduce processing)
-    if (!hasMention) {
+
+    // Method 3: Check if this is a reply to the bot
+    if (!isRelevant && this.botDid && record?.reply?.parent?.uri) {
+      const parentUri = String(record.reply.parent.uri);
+      // Check if parent URI belongs to the bot
+      if (parentUri.includes(this.botDid)) {
+        isRelevant = true;
+        console.log("Detected reply to bot post:", uri);
+      }
+    }
+
+    // Method 4: Check if this is a quote post of the bot
+    if (!isRelevant && this.botDid && record?.embed) {
+      const embed = record.embed;
+      // Check for direct quote (app.bsky.embed.record)
+      if (embed?.$type === "app.bsky.embed.record" && embed?.record?.uri) {
+        const quotedUri = String(embed.record.uri);
+        if (quotedUri.includes(this.botDid)) {
+          isRelevant = true;
+          console.log("Detected quote post of bot:", uri);
+        }
+      }
+      // Check for quote with media (app.bsky.embed.recordWithMedia)
+      if (embed?.$type === "app.bsky.embed.recordWithMedia" && embed?.record?.record?.uri) {
+        const quotedUri = String(embed.record.record.uri);
+        if (quotedUri.includes(this.botDid)) {
+          isRelevant = true;
+          console.log("Detected quote+media post of bot:", uri);
+        }
+      }
+    }
+
+    // Skip if not relevant (early exit to reduce processing)
+    if (!isRelevant) {
       return; // Silent skip - too many posts to log
     }
 
