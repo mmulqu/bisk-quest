@@ -238,6 +238,25 @@ export default {
     // Serve static assets (public/)
     return env.ASSETS.fetch(req);
   },
+
+  // Cron-based polling for mentions (runs every minute)
+  // This is more reliable than WebSocket-only approach
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    console.log("Cron trigger: Checking for missed mentions...");
+
+    try {
+      // Get the JetstreamListener Durable Object
+      const id = env.JET.idFromName("singleton");
+      const stub = env.JET.get(id);
+
+      // Trigger the catchup process
+      ctx.waitUntil(stub.fetch("https://do/catchup"));
+
+      console.log("Cron trigger: Catchup initiated");
+    } catch (e) {
+      console.error("Cron trigger error:", e);
+    }
+  },
 };
 
 // ============================================================================
@@ -298,6 +317,13 @@ export class JetstreamListener {
         running: this.running,
         connected: this.ws?.readyState === WebSocket.OPEN,
       });
+    }
+
+    if (url.pathname === "/catchup") {
+      // Triggered by cron to check for missed mentions
+      console.log("Catchup route triggered");
+      this.state.waitUntil(this.catchUpOnMissedMentions());
+      return new Response("catchup started");
     }
 
     return new Response("ok");

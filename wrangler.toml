@@ -2,6 +2,10 @@ name = "cf-bsky-letta-dm"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+# Cron trigger to poll for mentions every minute (more reliable than WebSocket)
+[triggers]
+crons = ["* * * * *"]
+
 [assets]
 directory = "./public"
 
