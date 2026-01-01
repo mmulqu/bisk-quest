@@ -37,14 +37,15 @@ async function dbGetUser(db: D1Database, did: string): Promise<UserRow | null> {
 async function dbUpsertUser(db: D1Database, row: UserRow): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO users(did, handle, letta_base_url, letta_key_enc_b64, created_at)
-       VALUES(?, ?, ?, ?, datetime('now'))
+      `INSERT INTO users(did, handle, letta_base_url, letta_key_enc_b64, created_at, current_agent_id)
+       VALUES(?, ?, ?, ?, datetime('now'), ?)
        ON CONFLICT(did) DO UPDATE SET
          handle = excluded.handle,
          letta_base_url = excluded.letta_base_url,
-         letta_key_enc_b64 = excluded.letta_key_enc_b64`
+         letta_key_enc_b64 = excluded.letta_key_enc_b64,
+         current_agent_id = excluded.current_agent_id`
     )
-    .bind(row.did, row.handle, row.letta_base_url, row.letta_key_enc_b64)
+    .bind(row.did, row.handle, row.letta_base_url, row.letta_key_enc_b64, row.current_agent_id ?? null)
     .run();
 }
 
@@ -73,6 +74,13 @@ async function dbRecordTurn(
        VALUES(?, ?, ?, ?, datetime('now'))`
     )
     .bind(triggerUri, playerDid, playerHandle, stateHash)
+    .run();
+}
+
+async function dbUpdateUserAgentId(db: D1Database, did: string, agentId: string): Promise<void> {
+  await db
+    .prepare("UPDATE users SET current_agent_id = ? WHERE did = ?")
+    .bind(agentId, did)
     .run();
 }
 
@@ -460,7 +468,7 @@ export class JetstreamListener {
       const meta = await getCanonicalMeta(this.env);
 
       // Run DM inference using player's Letta key
-      const dmText = await runDmTurn({
+      const { text: dmText, agentId } = await runDmTurn({
         user,
         env: this.env,
         stateBucket: this.env.STATE,
@@ -468,6 +476,10 @@ export class JetstreamListener {
         canonicalStateHash: meta.hash,
         playerHandle: user.handle,
       });
+
+      // Save the new agent ID for this user (so we can inspect it in Letta ADE)
+      await dbUpdateUserAgentId(this.env.DB, user.did, agentId);
+      console.log("Saved current agent ID for user:", agentId);
 
       // Compute new state hash
       const nextHash = await sha256Hex(`${meta.hash}\n${uri}\n${dmText}`);
