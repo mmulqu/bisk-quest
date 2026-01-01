@@ -9,7 +9,7 @@
 
 import { encryptToB64 } from "./crypto";
 import { resolveHandleToDid, postReply, createSession, type BskyEnv } from "./bsky";
-import { runDmTurn, type LettaEnv, type UserRow } from "./letta";
+import { runDmTurn, exportAgentState, type LettaEnv, type UserRow } from "./letta";
 
 // Combined environment type
 export type Env = BskyEnv &
@@ -303,6 +303,18 @@ async function processMention(env: Env, params: {
     });
 
     await dbUpdateUserAgentId(env.DB, params.user.did, agentId);
+
+    // CRITICAL: Export the agent state AFTER the response (preserves memory block edits)
+    console.log("Exporting updated agent state...");
+    const updatedAgentState = await exportAgentState(params.user, env, agentId);
+
+    // Save the updated .af file back to R2 as the new canonical state
+    await env.STATE.put(
+      env.CANONICAL_AF_KEY,
+      JSON.stringify(updatedAgentState),
+      { httpMetadata: { contentType: "application/json" } }
+    );
+    console.log("Saved updated agent state to R2");
 
     const nextHash = await sha256Hex(`${meta.hash}\n${params.uri}\n${dmText}`);
     const shortHash = nextHash.slice(0, 12);
