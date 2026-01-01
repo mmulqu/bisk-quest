@@ -1,0 +1,48 @@
+name = "cf-bsky-letta-dm"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dm-bluesky-letta"
+database_id = "82e47f4a-143d-43c6-9ecc-3997242fbf8b"
+
+[[r2_buckets]]
+binding = "STATE"
+bucket_name = "dm-shared-state"
+
+[durable_objects]
+bindings = [
+  { name = "JET", class_name = "JetstreamListener" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["JetstreamListener"]
+
+[vars]
+# DM bot Bluesky account (posts the DM replies)
+DM_HANDLE = "bisk-quest.bsky.social"
+
+# Mention trigger text to watch for
+DM_MENTION = "@bisk-quest.bsky.social"
+
+# Jetstream endpoint (Bluesky firehose lite)
+JETSTREAM_URL = "wss://jetstream2.us-west.bsky.network/subscribe?wantedCollections=app.bsky.feed.post"
+
+# Bluesky app password for the DM bot
+DM_APP_PASSWORD = "6rsv-hsbq-ztrs-qoud"
+
+# Default Letta API endpoint
+LETTA_BASE_URL = "https://api.letta.com"
+
+# R2 object keys for canonical state
+CANONICAL_AF_KEY = "canonical/canonical.af"
+CANONICAL_META_KEY = "canonical/canonical_meta.json"
+CANONICAL_PASSAGES_KEY = "canonical/canonical_passages.json"
+
+# Tag appended to DM posts
+DM_TAG = "#DM"

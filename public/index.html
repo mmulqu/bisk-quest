@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DM Runner</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>DM Runner</h1>
+      <p class="subtitle">Connect once. Play on Bluesky.</p>
+    </header>
+
+    <section class="card">
+      <h2>Register</h2>
+      <p class="help">Link your Letta account to your Bluesky handle. After setup, interact only by mentioning the DM bot on Bluesky.</p>
+      
+      <form id="registerForm">
+        <div class="field">
+          <label for="handle">Bluesky Handle</label>
+          <input type="text" id="handle" name="handle" placeholder="alice.bsky.social" required>
+        </div>
+        
+        <div class="field">
+          <label for="lettaKey">Letta API Key</label>
+          <input type="password" id="lettaKey" name="lettaKey" placeholder="sk-let-..." required>
+        </div>
+        
+        <div class="field">
+          <label for="lettaBaseUrl">Letta Base URL <span class="optional">(optional)</span></label>
+          <input type="text" id="lettaBaseUrl" name="lettaBaseUrl" placeholder="https://api.letta.com">
+        </div>
+        
+        <button type="submit">Save</button>
+        <p id="message" class="message"></p>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>System Status</h2>
+      <div class="controls">
+        <button id="startBtn" class="secondary">Start Listener</button>
+        <button id="stopBtn" class="secondary danger">Stop Listener</button>
+      </div>
+      <pre id="status">Loading...</pre>
+    </section>
+
+    <section class="card">
+      <h2>Recent Turns</h2>
+      <div id="turns">Loading...</div>
+    </section>
+
+    <footer>
+      <p>Your Letta API key is encrypted before storage. The DM bot posts replies publicly on Bluesky.</p>
+    </footer>
+  </main>
+
+  <script>
+    const messageEl = document.getElementById('message');
+    const statusEl = document.getElementById('status');
+    const turnsEl = document.getElementById('turns');
+
+    // Refresh status
+    async function refreshStatus() {
+      try {
+        const r = await fetch('/api/status');
+        const data = await r.json();
+        statusEl.textContent = JSON.stringify(data, null, 2);
+      } catch (e) {
+        statusEl.textContent = 'Error loading status';
+      }
+    }
+
+    // Refresh turns
+    async function refreshTurns() {
+      try {
+        const r = await fetch('/api/turns');
+        const data = await r.json();
+        
+        if (!data.turns?.length) {
+          turnsEl.innerHTML = '<p class="empty">No turns yet</p>';
+          return;
+        }
+        
+        turnsEl.innerHTML = data.turns.map(t => `
+          <div class="turn">
+            <span class="player">@${t.player_handle}</span>
+            <span class="hash">${t.state_hash.slice(0, 8)}</span>
+            <span class="time">${new Date(t.created_at).toLocaleString()}</span>
+          </div>
+        `).join('');
+      } catch (e) {
+        turnsEl.innerHTML = '<p class="empty">Error loading turns</p>';
+      }
+    }
+
+    // Register form
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      messageEl.textContent = 'Saving...';
+      messageEl.className = 'message';
+
+      const formData = new FormData(e.target);
+      const payload = {
+        handle: formData.get('handle'),
+        lettaKey: formData.get('lettaKey'),
+        lettaBaseUrl: formData.get('lettaBaseUrl') || undefined
+      };
+
+      try {
+        const r = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await r.json();
+        
+        if (r.ok) {
+          messageEl.textContent = `Registered! DID: ${data.did}`;
+          messageEl.className = 'message success';
+          e.target.reset();
+        } else {
+          messageEl.textContent = data.error || 'Registration failed';
+          messageEl.className = 'message error';
+        }
+      } catch (err) {
+        messageEl.textContent = 'Network error';
+        messageEl.className = 'message error';
+      }
+
+      refreshStatus();
+    });
+
+    // Start button
+    document.getElementById('startBtn').addEventListener('click', async () => {
+      await fetch('/api/start');
+      refreshStatus();
+    });
+
+    // Stop button
+    document.getElementById('stopBtn').addEventListener('click', async () => {
+      await fetch('/api/stop');
+      refreshStatus();
+    });
+
+    // Initial load
+    refreshStatus();
+    refreshTurns();
+
+    // Auto-refresh
+    setInterval(refreshStatus, 5000);
+    setInterval(refreshTurns, 10000);
+  </script>
+</body>
+</html>
