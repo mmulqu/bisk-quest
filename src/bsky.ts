@@ -81,10 +81,17 @@ export async function postReply(params: {
   const sess = await createSession(params.env);
   const url = `${BSKY_SERVICE}/xrpc/com.atproto.repo.createRecord`;
 
-  // Truncate if too long (Bluesky limit is 300 graphemes, ~3000 bytes safe)
+  // Bluesky limit is 300 graphemes (characters)
+  // Truncate smartly to ensure we stay under the limit
   let text = params.text;
-  if (text.length > 2800) {
-    text = text.slice(0, 2750) + "...\n\n(truncated)";
+  const MAX_LENGTH = 280; // Leave some buffer for grapheme counting differences
+
+  if (text.length > MAX_LENGTH) {
+    // Find a good break point (last space before limit)
+    const truncated = text.slice(0, MAX_LENGTH - 4);
+    const lastSpace = truncated.lastIndexOf(' ');
+    text = (lastSpace > MAX_LENGTH * 0.7 ? truncated.slice(0, lastSpace) : truncated) + '...';
+    console.warn(`Post truncated from ${params.text.length} to ${text.length} characters`);
   }
 
   const record = {

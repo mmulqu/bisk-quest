@@ -138,8 +138,9 @@ export async function runDmTurn(params: {
   // Import the shared canonical agent
   const agentId = await importAgentFromCanonicalAf(params);
 
-  // Build the DM prompt
-  const prompt = `You are the Dungeon Master for a collaborative public Bluesky campaign.
+  try {
+    // Build the DM prompt - emphasize brevity for Bluesky
+    const prompt = `You are the Dungeon Master for a collaborative public Bluesky campaign.
 
 CURRENT STATE HASH: ${params.canonicalStateHash}
 
@@ -148,28 +149,33 @@ ${params.moveText}
 
 ---
 
-Write the next DM narration. Be vivid but concise. Describe what happens in response to the player's action, then end with a question or prompt for the next action like "What do you do?"
+CRITICAL: Write a SHORT DM narration (250 characters MAX). Be vivid but extremely concise. Describe what happens in response to the player's action, then end with a brief question like "What do you do?"
 
-Keep your response under 2000 characters for Bluesky posting.`;
+This will be posted on Bluesky which has strict character limits. Keep it punchy!`;
 
-  const r = await lettaFetch(params.user, params.env, `/v1/agents/${agentId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: [{ role: "user", content: prompt }],
-      stream: false,
-    }),
-  });
+    const r = await lettaFetch(params.user, params.env, `/v1/agents/${agentId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: prompt }],
+        stream: false,
+      }),
+    });
 
-  const j = await r.json();
-  const text = pickAssistantText(j);
-  
-  if (!text) {
-    console.error("Empty Letta response:", JSON.stringify(j).slice(0, 500));
-    return "The DM ponders silently... (No response generated. Try again?)";
+    const j = await r.json();
+    const text = pickAssistantText(j);
+
+    if (!text) {
+      console.error("Empty Letta response:", JSON.stringify(j).slice(0, 500));
+      return "The DM ponders silently... (No response generated. Try again?)";
+    }
+
+    return text;
+  } finally {
+    // ALWAYS clean up the temporary agent, even if the turn fails
+    console.log("Cleaning up temporary agent:", agentId);
+    await deleteAgent(params.user, params.env, agentId);
   }
-  
-  return text;
 }
 
 /**
