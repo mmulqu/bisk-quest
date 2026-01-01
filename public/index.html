@@ -40,10 +40,7 @@
 
     <section class="card">
       <h2>System Status</h2>
-      <div class="controls">
-        <button id="startBtn" class="secondary">Start Listener</button>
-        <button id="stopBtn" class="secondary danger">Stop Listener</button>
-      </div>
+      <p class="help">Bot automatically polls Bluesky notifications every minute via cron.</p>
       <pre id="status">Loading...</pre>
     </section>
 
@@ -131,18 +128,6 @@
         messageEl.className = 'message error';
       }
 
-      refreshStatus();
-    });
-
-    // Start button
-    document.getElementById('startBtn').addEventListener('click', async () => {
-      await fetch('/api/start');
-      refreshStatus();
-    });
-
-    // Stop button
-    document.getElementById('stopBtn').addEventListener('click', async () => {
-      await fetch('/api/stop');
       refreshStatus();
     });
 
