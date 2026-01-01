@@ -475,7 +475,21 @@ export class JetstreamListener {
 
       // Build the reply text
       const tag = this.env.DM_TAG || "#DM";
-      const replyText = `${dmText}\n\n${tag} state:${shortHash}`;
+      const footer = `\n\n${tag} state:${shortHash}`;
+      const footerLength = footer.length;
+
+      // Ensure the DM text + footer fits in Bluesky's 300 char limit
+      let trimmedDmText = dmText;
+      const MAX_TOTAL_LENGTH = 280;
+
+      if (dmText.length + footerLength > MAX_TOTAL_LENGTH) {
+        const maxDmLength = MAX_TOTAL_LENGTH - footerLength - 3; // -3 for "..."
+        const lastSpace = dmText.slice(0, maxDmLength).lastIndexOf(' ');
+        trimmedDmText = dmText.slice(0, lastSpace > 0 ? lastSpace : maxDmLength) + '...';
+        console.log(`DM response truncated from ${dmText.length} to ${trimmedDmText.length} chars`);
+      }
+
+      const replyText = `${trimmedDmText}${footer}`;
 
       // Determine reply threading
       // If the post has a parent (is a reply), use that for threading
