@@ -206,6 +206,17 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
 
     console.log(`Found ${relevantNotifs.length} relevant notifications to process`);
 
+    // Sort notifications by indexedAt (oldest first) to ensure FIFO processing
+    relevantNotifs.sort((a: any, b: any) => {
+      const aTime = new Date(a.indexedAt).getTime();
+      const bTime = new Date(b.indexedAt).getTime();
+      return aTime - bTime; // Oldest first
+    });
+
+    if (relevantNotifs.length > 0) {
+      console.log(`Processing order (oldest to newest): ${relevantNotifs.map((n: any) => n.indexedAt).join(', ')}`);
+    }
+
     // RACE CONDITION PREVENTION: 2-minute delay between processing turns
     const PROCESSING_DELAY_MS = 2 * 60 * 1000; // 2 minutes
     const lastProcessTime = await dbGetBotState(env.DB, "last_process_time");
