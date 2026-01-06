@@ -206,7 +206,24 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
 
     console.log(`Found ${relevantNotifs.length} relevant notifications to process`);
 
-    // Process each notification
+    // RACE CONDITION PREVENTION: 2-minute delay between processing turns
+    const PROCESSING_DELAY_MS = 2 * 60 * 1000; // 2 minutes
+    const lastProcessTime = await dbGetBotState(env.DB, "last_process_time");
+
+    if (lastProcessTime) {
+      const timeSinceLastProcess = Date.now() - new Date(lastProcessTime).getTime();
+      if (timeSinceLastProcess < PROCESSING_DELAY_MS) {
+        const remainingWait = Math.ceil((PROCESSING_DELAY_MS - timeSinceLastProcess) / 1000);
+        console.log(`Waiting ${remainingWait}s before next turn (preventing race conditions)`);
+
+        // Update last notification check timestamp so we don't re-fetch these
+        const now = new Date().toISOString();
+        await dbSetBotState(env.DB, "last_notification_check", now);
+        return; // Skip processing, will catch mentions on next cron run
+      }
+    }
+
+    // Process only ONE mention per cron run (prevents race conditions)
     for (const notif of relevantNotifs) {
       const authorDid = notif.author?.did;
       const uri = notif.uri;
@@ -270,6 +287,13 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
           text,
           user
         });
+
+        // Update last process time AFTER successful processing
+        await dbSetBotState(env.DB, "last_process_time", new Date().toISOString());
+        console.log("Turn processed successfully. Next turn can be processed in 2 minutes.");
+
+        // IMPORTANT: Only process ONE mention per cron run
+        break;
 
       } catch (e) {
         console.error("Error processing notification:", uri, e);
