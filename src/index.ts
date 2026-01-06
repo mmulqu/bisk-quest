@@ -365,11 +365,11 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
     }
 
     // Update last checked timestamp to avoid re-fetching old notifications
-    const now = new Date().toISOString();
-    await dbSetBotState(env.DB, "last_notification_check", now);
+    const lastCheckTimestamp = new Date().toISOString();
+    await dbSetBotState(env.DB, "last_notification_check", lastCheckTimestamp);
     console.log("\n========================================");
     console.log("NOTIFICATION POLL COMPLETE");
-    console.log("Updated last_notification_check to:", now);
+    console.log("Updated last_notification_check to:", lastCheckTimestamp);
     console.log("========================================\n");
 
   } catch (e) {
