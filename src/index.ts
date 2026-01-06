@@ -65,14 +65,16 @@ async function dbRecordTurn(
   triggerUri: string,
   playerDid: string,
   playerHandle: string,
-  stateHash: string
+  stateHash: string,
+  playerMessage: string,
+  dmResponse: string
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO dm_turns(trigger_uri, player_did, player_handle, state_hash, created_at)
-       VALUES(?, ?, ?, ?, datetime('now'))`
+      `INSERT INTO dm_turns(trigger_uri, player_did, player_handle, state_hash, player_message, dm_response, created_at)
+       VALUES(?, ?, ?, ?, ?, ?, datetime('now'))`
     )
-    .bind(triggerUri, playerDid, playerHandle, stateHash)
+    .bind(triggerUri, playerDid, playerHandle, stateHash, playerMessage, dmResponse)
     .run();
 }
 
@@ -363,7 +365,16 @@ async function processMention(env: Env, params: {
       turn_count: (meta.turn_count ?? 0) + 1,
     });
 
-    await dbRecordTurn(env.DB, params.uri, params.user.did, params.user.handle, nextHash);
+    // Record turn with player message and DM response for story display
+    await dbRecordTurn(
+      env.DB,
+      params.uri,
+      params.user.did,
+      params.user.handle,
+      nextHash,
+      params.text, // Player's original message
+      dmText // DM's full response (before truncation)
+    );
 
     console.log("Turn complete. New state:", shortHash);
   } catch (e: any) {

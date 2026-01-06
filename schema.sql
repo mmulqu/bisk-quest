@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS dm_turns (
   player_did TEXT NOT NULL,
   player_handle TEXT NOT NULL,
   state_hash TEXT NOT NULL,
+  player_message TEXT,
+  dm_response TEXT,
   created_at TEXT NOT NULL
 );
 
