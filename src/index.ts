@@ -215,18 +215,25 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
       return;
     }
 
-    // Sort notifications by indexedAt (oldest first) to ensure FIFO processing
+    // Sort notifications by post creation time (oldest first) to ensure FIFO processing
+    // Use the actual post createdAt timestamp from the record, not indexedAt
     relevantNotifs.sort((a: any, b: any) => {
-      const aTime = new Date(a.indexedAt).getTime();
-      const bTime = new Date(b.indexedAt).getTime();
-      return aTime - bTime; // Oldest first
+      const aTime = new Date(a.record?.createdAt || a.indexedAt).getTime();
+      const bTime = new Date(b.record?.createdAt || b.indexedAt).getTime();
+      return aTime - bTime; // Oldest post first
     });
 
-    console.log("\n--- SORTED NOTIFICATIONS (oldest first) ---");
+    console.log("\n--- SORTED NOTIFICATIONS (oldest first by POST creation time) ---");
     relevantNotifs.forEach((n: any, idx: number) => {
-      console.log(`${idx + 1}. [${n.indexedAt}] ${n.reason} from ${n.author?.handle} - URI: ${n.uri}`);
+      const postCreatedAt = n.record?.createdAt || n.indexedAt;
+      const timeDiff = new Date(n.indexedAt).getTime() - new Date(postCreatedAt).getTime();
+      console.log(`${idx + 1}. ${n.reason} from @${n.author?.handle}`);
+      console.log(`    POST CREATED: ${postCreatedAt}`);
+      console.log(`    INDEXED:      ${n.indexedAt} (${Math.round(timeDiff/1000)}s later)`);
+      console.log(`    URI: ${n.uri}`);
+      console.log(`    Text: "${String(n.record?.text || '').substring(0, 80)}"`);
     });
-    console.log("-------------------------------------------\n");
+    console.log("-------------------------------------------------------------------\n");
 
     // RACE CONDITION PREVENTION: 2-minute delay between processing turns
     const PROCESSING_DELAY_MS = 2 * 60 * 1000; // 2 minutes
@@ -253,9 +260,11 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
       const text = String(record.text ?? "");
 
       console.log(`\n🔍 Checking notification: ${uri}`);
-      console.log(`   Indexed at: ${notif.indexedAt}`);
-      console.log(`   From: ${notif.author?.handle}`);
+      console.log(`   Post created: ${record.createdAt || 'unknown'}`);
+      console.log(`   Indexed at:   ${notif.indexedAt}`);
+      console.log(`   From: @${notif.author?.handle}`);
       console.log(`   Reason: ${notif.reason}`);
+      console.log(`   Text: "${text.substring(0, 80)}${text.length > 80 ? '...' : ''}}"`);
 
       if (!authorDid || !uri) {
         console.log(`   ❌ SKIP: Missing authorDid or uri`);
