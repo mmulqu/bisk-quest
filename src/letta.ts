@@ -198,7 +198,7 @@ export async function runDmTurn(params: {
   moveText: string;
   canonicalStateHash: string;
   playerHandle: string;
-}): Promise<{ text: string; agentId: string }> {
+}): Promise<{ text: string; agentId: string; model: string }> {
   // Import the shared canonical agent (creates a NEW agent)
   const agentId = await importAgentFromCanonicalAf(params);
 
@@ -240,16 +240,23 @@ This will be posted on Bluesky which has strict character limits. Keep it punchy
   if (!text) {
     console.error("Empty Letta response - full response:", JSON.stringify(j, null, 2));
     console.error("Failed to extract text from response");
+    const model = (j as any)?.usage?.model || (j as any)?.model || "unknown";
     return {
       text: "The DM ponders silently... (No response generated. Try again?)",
       agentId,
+      model,
     };
   }
 
   console.log("Extracted DM text:", text.slice(0, 200));
 
-  // Return both the text and the NEW agent ID (caller will save it)
-  return { text, agentId };
+  // Extract model used from Letta response
+  // Letta API may include model in various places: usage.model, model, etc.
+  const model = (j as any)?.usage?.model || (j as any)?.model || "unknown";
+  console.log("Model used:", model);
+
+  // Return the text, agent ID, and model
+  return { text, agentId, model };
 }
 
 /**

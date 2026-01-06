@@ -82,30 +82,68 @@
           return;
         }
 
-        turnsEl.innerHTML = data.turns.map((t, i) => `
-          <div class="story-entry">
-            <div class="turn-header">
-              <span class="turn-number">Turn #${data.turns.length - i}</span>
-              <span class="turn-time">${new Date(t.created_at).toLocaleTimeString()}</span>
-            </div>
+        // Group turns by thread
+        const threads = {};
+        data.turns.forEach(turn => {
+          const threadId = turn.thread_root_uri || turn.trigger_uri;
+          if (!threads[threadId]) {
+            threads[threadId] = [];
+          }
+          threads[threadId].push(turn);
+        });
 
-            <div class="player-action">
-              <div class="message-label">💬 @${t.player_handle}</div>
-              <div class="message-text">${escapeHtml(t.player_message || 'Unknown action')}</div>
-            </div>
+        // Sort threads by most recent activity
+        const sortedThreads = Object.entries(threads).sort((a, b) => {
+          const aLatest = Math.max(...a[1].map(t => new Date(t.created_at).getTime()));
+          const bLatest = Math.max(...b[1].map(t => new Date(t.created_at).getTime()));
+          return bLatest - aLatest;
+        });
 
-            <div class="dm-response">
-              <div class="message-label">🎲 DM</div>
-              <div class="message-text">${escapeHtml(t.dm_response || 'Processing...')}</div>
-            </div>
+        turnsEl.innerHTML = sortedThreads.map(([threadId, turns], threadIdx) => {
+          const latestTurn = turns[0]; // Already sorted by created_at DESC
+          const turnCount = turns.length;
+          const threadNum = sortedThreads.length - threadIdx;
 
-            <div class="turn-footer">
-              <span class="state-hash">📍 ${t.state_hash.slice(0, 12)}</span>
-              <a href="https://bsky.app/profile/${t.player_handle.replace('@', '')}/post/${t.trigger_uri.split('/').pop()}"
-                 target="_blank" class="bsky-link">🔗 View on Bluesky</a>
+          return `
+            <div class="thread-container">
+              <div class="thread-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                <div class="thread-info">
+                  <span class="thread-title">🧵 Thread #${threadNum}</span>
+                  <span class="thread-meta">${turnCount} turn${turnCount > 1 ? 's' : ''}</span>
+                </div>
+                <div class="thread-time">${new Date(latestTurn.created_at).toLocaleString()}</div>
+                <span class="expand-icon">▼</span>
+              </div>
+              <div class="thread-content">
+                ${turns.map((t, i) => `
+                  <div class="story-entry">
+                    <div class="turn-header">
+                      <span class="turn-number">Turn #${turns.length - i}</span>
+                      <span class="turn-time">${new Date(t.created_at).toLocaleTimeString()}</span>
+                    </div>
+
+                    <div class="player-action">
+                      <div class="message-label">💬 @${t.player_handle}</div>
+                      <div class="message-text">${escapeHtml(t.player_message || 'Unknown action')}</div>
+                    </div>
+
+                    <div class="dm-response">
+                      <div class="message-label">🎲 DM</div>
+                      <div class="message-text">${escapeHtml(t.dm_response || 'Processing...')}</div>
+                      ${t.model_used ? `<div class="model-info">model: ${t.model_used}</div>` : ''}
+                    </div>
+
+                    <div class="turn-footer">
+                      <span class="state-hash">📍 ${t.state_hash.slice(0, 12)}</span>
+                      <a href="https://bsky.app/profile/${t.player_handle.replace('@', '')}/post/${t.trigger_uri.split('/').pop()}"
+                         target="_blank" class="bsky-link">🔗 View on Bluesky</a>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
             </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
       } catch (e) {
         turnsEl.innerHTML = '<p class="empty">Error loading adventure log</p>';
       }
