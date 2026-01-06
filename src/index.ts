@@ -215,21 +215,43 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
       return;
     }
 
-    // Sort notifications by post creation time (oldest first) to ensure FIFO processing
-    // Use the actual post createdAt timestamp from the record, not indexedAt
+    // Calculate sortAt timestamp for each notification using Bluesky's recommended logic:
+    // https://docs.bsky.app/docs/advanced-guides/timestamps
+    // Use createdAt unless it's in the future, then use indexedAt
+    const CLOCK_SKEW_WINDOW = 2 * 60 * 1000; // 2 minutes
+    const now = Date.now();
+
+    const getSortAt = (notif: any): number => {
+      const createdAt = notif.record?.createdAt ? new Date(notif.record.createdAt).getTime() : null;
+      const indexedAt = new Date(notif.indexedAt).getTime();
+
+      if (!createdAt) return indexedAt;
+
+      // If createdAt is older than UNIX epoch, use indexedAt
+      if (createdAt < 0) return indexedAt;
+
+      // If createdAt is in the future (beyond skew window), use indexedAt
+      if (createdAt > now + CLOCK_SKEW_WINDOW) return indexedAt;
+
+      // Otherwise use the earlier of createdAt and indexedAt
+      return Math.min(createdAt, indexedAt);
+    };
+
+    // Sort notifications by sortAt (oldest first) to ensure FIFO processing
     relevantNotifs.sort((a: any, b: any) => {
-      const aTime = new Date(a.record?.createdAt || a.indexedAt).getTime();
-      const bTime = new Date(b.record?.createdAt || b.indexedAt).getTime();
-      return aTime - bTime; // Oldest post first
+      return getSortAt(a) - getSortAt(b);
     });
 
-    console.log("\n--- SORTED NOTIFICATIONS (oldest first by POST creation time) ---");
+    console.log("\n--- SORTED NOTIFICATIONS (oldest first using sortAt logic) ---");
     relevantNotifs.forEach((n: any, idx: number) => {
-      const postCreatedAt = n.record?.createdAt || n.indexedAt;
-      const timeDiff = new Date(n.indexedAt).getTime() - new Date(postCreatedAt).getTime();
+      const createdAt = n.record?.createdAt || 'unknown';
+      const indexedAt = n.indexedAt;
+      const sortAt = new Date(getSortAt(n)).toISOString();
+      const isFuture = n.record?.createdAt && new Date(n.record.createdAt).getTime() > now + CLOCK_SKEW_WINDOW;
       console.log(`${idx + 1}. ${n.reason} from @${n.author?.handle}`);
-      console.log(`    POST CREATED: ${postCreatedAt}`);
-      console.log(`    INDEXED:      ${n.indexedAt} (${Math.round(timeDiff/1000)}s later)`);
+      console.log(`    SORT AT:      ${sortAt} ${isFuture ? '(used indexedAt - createdAt was future)' : '(using createdAt)'}`);
+      console.log(`    POST CREATED: ${createdAt}`);
+      console.log(`    INDEXED:      ${indexedAt}`);
       console.log(`    URI: ${n.uri}`);
       console.log(`    Text: "${String(n.record?.text || '').substring(0, 80)}"`);
     });
