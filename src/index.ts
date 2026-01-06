@@ -159,11 +159,15 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
   try {
     console.log("Polling Bluesky notifications...");
 
-    // Get last checked timestamp from database
+    // Get last checked timestamp from database (used for initial filtering)
     const lastChecked = await dbGetBotState(env.DB, "last_notification_check");
     const since = lastChecked || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    console.log("Checking notifications since:", since);
+    console.log("========================================");
+    console.log("NOTIFICATION POLL STARTED");
+    console.log("Last checked timestamp:", since);
+    console.log("Current time:", new Date().toISOString());
+    console.log("========================================");
 
     // Create session to fetch notifications
     const session = await createSession(env);
@@ -182,11 +186,11 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
     const notifData = await notifRes.json() as any;
     const notifications = notifData?.notifications || [];
 
-    // Filter for relevant mentions/replies after the last check
-    const relevantNotifs = notifications.filter((n: any) => {
-      // Skip if too old
-      if (n.indexedAt < since) return false;
+    console.log(`Fetched ${notifications.length} total notifications from API`);
 
+    // Filter for relevant mentions/replies
+    // NOTE: We don't filter by timestamp here - dbWasProcessed() handles deduplication
+    const relevantNotifs = notifications.filter((n: any) => {
       // Skip reposts
       if (n.reason === 'repost') return false;
 
@@ -204,7 +208,12 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
       return false;
     });
 
-    console.log(`Found ${relevantNotifs.length} relevant notifications to process`);
+    console.log(`Found ${relevantNotifs.length} relevant notifications (mentions/replies/quotes)`);
+
+    if (relevantNotifs.length === 0) {
+      console.log("No new notifications to process.");
+      return;
+    }
 
     // Sort notifications by indexedAt (oldest first) to ensure FIFO processing
     relevantNotifs.sort((a: any, b: any) => {
@@ -213,9 +222,11 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
       return aTime - bTime; // Oldest first
     });
 
-    if (relevantNotifs.length > 0) {
-      console.log(`Processing order (oldest to newest): ${relevantNotifs.map((n: any) => n.indexedAt).join(', ')}`);
-    }
+    console.log("\n--- SORTED NOTIFICATIONS (oldest first) ---");
+    relevantNotifs.forEach((n: any, idx: number) => {
+      console.log(`${idx + 1}. [${n.indexedAt}] ${n.reason} from ${n.author?.handle} - URI: ${n.uri}`);
+    });
+    console.log("-------------------------------------------\n");
 
     // RACE CONDITION PREVENTION: 2-minute delay between processing turns
     const PROCESSING_DELAY_MS = 2 * 60 * 1000; // 2 minutes
@@ -225,14 +236,14 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
       const timeSinceLastProcess = Date.now() - new Date(lastProcessTime).getTime();
       if (timeSinceLastProcess < PROCESSING_DELAY_MS) {
         const remainingWait = Math.ceil((PROCESSING_DELAY_MS - timeSinceLastProcess) / 1000);
-        console.log(`Waiting ${remainingWait}s before next turn (preventing race conditions)`);
-
-        // Update last notification check timestamp so we don't re-fetch these
-        const now = new Date().toISOString();
-        await dbSetBotState(env.DB, "last_notification_check", now);
-        return; // Skip processing, will catch mentions on next cron run
+        console.log(`⏳ WAITING: ${remainingWait}s remaining before next turn (preventing race conditions)`);
+        console.log(`   Unprocessed notifications will be picked up on next cron run`);
+        // DON'T update last_notification_check here - unprocessed mentions need to be seen again
+        return;
       }
     }
+
+    console.log("✓ Ready to process next notification");
 
     // Process only ONE mention per cron run (prevents race conditions)
     for (const notif of relevantNotifs) {
@@ -241,15 +252,24 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
       const record = notif.record ?? {};
       const text = String(record.text ?? "");
 
-      if (!authorDid || !uri) continue;
+      console.log(`\n🔍 Checking notification: ${uri}`);
+      console.log(`   Indexed at: ${notif.indexedAt}`);
+      console.log(`   From: ${notif.author?.handle}`);
+      console.log(`   Reason: ${notif.reason}`);
 
-      // Check if already processed
-      if (await dbWasProcessed(env.DB, uri)) {
-        console.log("Already processed:", uri);
+      if (!authorDid || !uri) {
+        console.log(`   ❌ SKIP: Missing authorDid or uri`);
         continue;
       }
 
-      console.log("Processing notification:", uri);
+      // Check if already processed
+      const wasProcessed = await dbWasProcessed(env.DB, uri);
+      if (wasProcessed) {
+        console.log(`   ✓ Already processed - skipping`);
+        continue;
+      }
+
+      console.log(`   🎯 NEW notification - processing...`);
 
       // Get the post details to extract cid
       try {
@@ -300,21 +320,26 @@ async function pollAndProcessNotifications(env: Env): Promise<void> {
         });
 
         // Update last process time AFTER successful processing
-        await dbSetBotState(env.DB, "last_process_time", new Date().toISOString());
-        console.log("Turn processed successfully. Next turn can be processed in 2 minutes.");
+        const processedAt = new Date().toISOString();
+        await dbSetBotState(env.DB, "last_process_time", processedAt);
+        console.log(`\n✅ Turn processed successfully at ${processedAt}`);
+        console.log(`   Next turn can be processed in 2 minutes.`);
 
         // IMPORTANT: Only process ONE mention per cron run
         break;
 
       } catch (e) {
-        console.error("Error processing notification:", uri, e);
+        console.error(`\n❌ Error processing notification ${uri}:`, e);
       }
     }
 
-    // Update last checked timestamp
+    // Update last checked timestamp to avoid re-fetching old notifications
     const now = new Date().toISOString();
     await dbSetBotState(env.DB, "last_notification_check", now);
-    console.log("Polling complete. Updated last check to:", now);
+    console.log("\n========================================");
+    console.log("NOTIFICATION POLL COMPLETE");
+    console.log("Updated last_notification_check to:", now);
+    console.log("========================================\n");
 
   } catch (e) {
     console.error("Error polling notifications:", e);
