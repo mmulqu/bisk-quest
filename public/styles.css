@@ -210,13 +210,84 @@ pre {
   padding: 1rem 0;
 }
 
+/* Thread Container Styles */
+.thread-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+
+.thread-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.thread-header:hover {
+  background: #252525;
+}
+
+.thread-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.thread-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.thread-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--surface);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+
+.thread-time {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.expand-icon {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.thread-container.collapsed .expand-icon {
+  transform: rotate(-90deg);
+}
+
+.thread-content {
+  padding: 0.5rem;
+  max-height: 10000px;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out;
+}
+
+.thread-container.collapsed .thread-content {
+  max-height: 0;
+  padding: 0;
+}
+
 /* Story Entry Styles */
 .story-entry {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .story-entry:last-child {
@@ -289,6 +360,14 @@ pre {
 .dm-response .message-text {
   border-left-color: #a78bfa;
   font-style: italic;
+}
+
+.model-info {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+  opacity: 0.7;
 }
 
 .turn-footer {

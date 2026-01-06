@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS dm_turns (
   state_hash TEXT NOT NULL,
   player_message TEXT,
   dm_response TEXT,
+  thread_root_uri TEXT,
+  model_used TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -35,3 +37,4 @@ CREATE TABLE IF NOT EXISTS bot_state (
 -- Index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_users_handle ON users(handle);
 CREATE INDEX IF NOT EXISTS idx_dm_turns_player ON dm_turns(player_did);
+CREATE INDEX IF NOT EXISTS idx_dm_turns_thread ON dm_turns(thread_root_uri);

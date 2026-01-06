@@ -67,14 +67,16 @@ async function dbRecordTurn(
   playerHandle: string,
   stateHash: string,
   playerMessage: string,
-  dmResponse: string
+  dmResponse: string,
+  threadRootUri: string,
+  modelUsed: string
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO dm_turns(trigger_uri, player_did, player_handle, state_hash, player_message, dm_response, created_at)
-       VALUES(?, ?, ?, ?, ?, ?, datetime('now'))`
+      `INSERT INTO dm_turns(trigger_uri, player_did, player_handle, state_hash, player_message, dm_response, thread_root_uri, model_used, created_at)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
     )
-    .bind(triggerUri, playerDid, playerHandle, stateHash, playerMessage, dmResponse)
+    .bind(triggerUri, playerDid, playerHandle, stateHash, playerMessage, dmResponse, threadRootUri, modelUsed)
     .run();
 }
 
@@ -297,7 +299,7 @@ async function processMention(env: Env, params: {
 
     const meta = await getCanonicalMeta(env);
 
-    const { text: dmText, agentId } = await runDmTurn({
+    const { text: dmText, agentId, model } = await runDmTurn({
       user: params.user,
       env,
       stateBucket: env.STATE,
@@ -373,7 +375,9 @@ async function processMention(env: Env, params: {
       params.user.handle,
       nextHash,
       params.text, // Player's original message
-      dmText // DM's full response (before truncation)
+      dmText, // DM's full response (before truncation)
+      rootUri, // Thread root URI for grouping
+      model // Model used by Letta
     );
 
     console.log("Turn complete. New state:", shortHash);
