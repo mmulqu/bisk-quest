@@ -202,6 +202,14 @@ export async function runDmTurn(params: {
   // Import the shared canonical agent (creates a NEW agent)
   const agentId = await importAgentFromCanonicalAf(params);
 
+  // Fetch agent details to get the model from llm_config
+  const agentDetailsRes = await lettaFetch(params.user, params.env, `/v1/agents/${agentId}`, {
+    method: "GET",
+  });
+  const agentData = await agentDetailsRes.json() as any;
+  const model = agentData?.llm_config?.model || "unknown";
+  console.log("Agent model from llm_config:", model);
+
   // Clean up ALL old bisky_copy agents except this new one
   // This runs AFTER import so we don't delete the new agent
   await cleanupOldAgents(params.user, params.env, agentId);
@@ -240,7 +248,6 @@ This will be posted on Bluesky which has strict character limits. Keep it punchy
   if (!text) {
     console.error("Empty Letta response - full response:", JSON.stringify(j, null, 2));
     console.error("Failed to extract text from response");
-    const model = (j as any)?.usage?.model || (j as any)?.model || "unknown";
     return {
       text: "The DM ponders silently... (No response generated. Try again?)",
       agentId,
@@ -250,12 +257,7 @@ This will be posted on Bluesky which has strict character limits. Keep it punchy
 
   console.log("Extracted DM text:", text.slice(0, 200));
 
-  // Extract model used from Letta response
-  // Letta API may include model in various places: usage.model, model, etc.
-  const model = (j as any)?.usage?.model || (j as any)?.model || "unknown";
-  console.log("Model used:", model);
-
-  // Return the text, agent ID, and model
+  // Return the text, agent ID, and model (model was fetched from agent config earlier)
   return { text, agentId, model };
 }
 
